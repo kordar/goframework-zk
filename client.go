@@ -1,33 +1,42 @@
 package goframework_zk
 
 import (
-	"fmt"
 	logger "github.com/kordar/gologger"
 	"github.com/samuel/go-zookeeper/zk"
 	"time"
 )
 
 type ZkClient struct {
-	conn *zk.Conn
+	conn  *zk.Conn
+	wPath []string
 }
 
-func NewZkClient(hosts []string, timeout time.Duration) {
-	conn, _, err := zk.Connect(hosts, timeout)
-	defer conn.Close()
-	if err != nil {
-		logger.Errorf("初始化zookeeper失败，err=%v", err)
-		return
-	}
+func NewZkClient(hosts []string, timeout time.Duration) *ZkClient {
+	return NewZkClientWithCallback(hosts, timeout, nil)
 }
 
-func NewZkClientWithCallback(hosts []string, timeout time.Duration, cb EventCallback) {
-	eventCallbackOption := zk.WithEventCallback(cb)
-	conn, _, err := zk.Connect(hosts, timeout, eventCallbackOption)
-	defer conn.Close()
+func NewZkClientWithCallback(hosts []string, timeout time.Duration, cb zk.EventCallback) *ZkClient {
+	client := &ZkClient{wPath: make([]string, 0)}
+
+	var err error
+	if cb != nil {
+		eventCallbackOption := zk.WithEventCallback(func(event zk.Event) {
+			cb(event)
+			for _, p := range client.wPath {
+				client.Listen(p)
+			}
+		})
+		client.conn, _, err = zk.Connect(hosts, timeout, eventCallbackOption)
+	} else {
+		client.conn, _, err = zk.Connect(hosts, timeout)
+	}
+
 	if err != nil {
 		logger.Errorf("初始化zookeeper失败，err=%v", err)
-		return
+		return nil
 	}
+
+	return client
 }
 
 func (c *ZkClient) Add(path string, data []byte, flag int32) bool {
@@ -87,16 +96,26 @@ func (c *ZkClient) Del(path string) bool {
 	return true
 }
 
-func (c *ZkClient) Callback(callback zk.EventCallback) {
-	// 创建监听的option，用于初始化zk
-
-	// 连接zk
-	conn, _, err := zk.Connect(hosts, time.Second*5, eventCallbackOption)
-	defer conn.Close()
-	if err != nil {
-		fmt.Println(err)
-		return
+func (c *ZkClient) Listen(path ...string) {
+	// 开始监听path
+	for _, s := range path {
+		_, _, _, err := c.conn.ExistsW(s)
+		if err != nil {
+			logger.Warnf("监听path=%s, err=%v", s, err)
+			continue
+		}
+		exists := false
+		for _, p := range c.wPath {
+			if p == s {
+				exists = true
+				break
+			}
+		}
+		if !exists {
+			c.wPath = append(c.wPath, s)
+		}
 	}
+
 }
 
 func (c *ZkClient) Close() {
