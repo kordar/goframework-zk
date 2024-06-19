@@ -1,4 +1,4 @@
-package main
+package goframework_zk
 
 import (
 	"fmt"
