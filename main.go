@@ -1,4 +1,4 @@
-package goframework_zk
+package gozkclient
 
 import (
 	"fmt"
