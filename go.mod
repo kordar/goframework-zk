@@ -1,4 +1,4 @@
-module github.com/kordar/goframework-zk
+module github.com/kordar/gozkclient
 
 go 1.16
 
